@@ -1,0 +1,1 @@
+{"scripts":{"dev":"node server.js"},"dependencies":{"@openai/openai":"latest","cors":"latest","dotenv":"latest","express":"latest","openai":"latest"},"devDependencies":{}}
