@@ -1,46 +1,43 @@
 # Facebook Message Helper
 
-A practical starter app for helping with Facebook/Messenger replies.
+A desktop/mobile-friendly web app for Facebook/Messenger-style message help.
 
-Important limitation: Meta does not provide a normal API for reading your personal Facebook/Messenger inbox. The official Messenger Platform is for Facebook Pages / business accounts, not personal inbox scraping. This starter therefore uses:
+## What it does now
+- Paste/import Facebook messages line by line.
+- View them as chat threads.
+- Translate the latest incoming message.
+- Generate short reply suggestions.
+- Copy the selected reply and open Messenger.
 
-1. Desktop browser extension: reads only the Messenger chat text visible on your screen.
-2. Mobile approach: pair this web app with an Android Notification Listener app if you want automatic capture from phone notifications.
-3. Optional server API: sends text to OpenAI for translation and reply suggestions.
+## Important Facebook limitation
+This app does **not** secretly scrape personal Facebook Messenger inboxes. Meta's official Messenger Platform is mainly for Facebook Page/business messaging and requires a Page, permissions, webhooks, review, and access tokens.
 
-## Folders
-
-- `webapp/` — main dashboard for translation + reply suggestions.
-- `desktop-extension/` — Chrome/Edge extension that captures visible Messenger/Facebook message text and sends it to the webapp.
-- `server/` — optional Node server so your API key stays hidden.
-
-## Quick Start
-
-### 1. Run the web app
-Open `webapp/index.html` directly in a browser, or host it on Vercel.
-
-### 2. Run the server
+## Run locally
 ```bash
-cd server
 npm install
-cp .env.example .env
-# Add your OpenAI API key inside .env
 npm run dev
 ```
-The web app expects the server at `http://localhost:8787` by default.
 
-### 3. Install the desktop extension
-1. Open Chrome or Edge.
-2. Go to `chrome://extensions`.
-3. Turn on Developer Mode.
-4. Click Load unpacked.
-5. Select the `desktop-extension` folder.
-6. Open Messenger/Facebook messages in the browser.
-7. Click the extension button → Capture Visible Messages.
+## Build
+```bash
+npm run build
+```
 
-## Mobile option
-For Android, use the same architecture as your WhatsApp notification app:
+## Host on Vercel
+1. Upload this project to GitHub.
+2. Import the GitHub repo into Vercel.
+3. Set environment variables for your AI API key in Vercel, not inside the browser code.
+4. Deploy.
 
-Facebook/Messenger notification → Android Notification Listener → local store → send selected messages to this web app/server → translate → suggest reply.
+## Recommended next build
+Add a `/api/ai` server route in Vercel/Node so the browser sends messages to your backend, and the backend calls your AI provider for translation/reply suggestions. This keeps API keys hidden.
 
-This starter does not include the Android native project yet, but the web/server side is ready.
+## Official Facebook Page integration idea
+For a Facebook Page inbox, add:
+- Meta Developer app
+- Messenger Platform product
+- Webhook URL
+- Page access token
+- `pages_messaging` and related permissions
+
+Then incoming Page messages can be saved to a database and displayed in this app.
