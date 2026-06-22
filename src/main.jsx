@@ -120,61 +120,71 @@ function sanitizeThread(thread) {
 function fallbackTranslate(text, target) {
   const cleaned = normaliseText(text);
   if (!cleaned) return '';
+  if (target !== 'English') return cleaned;
 
-  const knownEnglish = {
+  // Local fallback is only for common chat lines. Real full translation uses /api/translate.
+  // Important: never do fake word-by-word replacement like replacing 你 with "you" inside Chinese.
+  const exact = {
     'Hello 晚上好呀': 'Hello, good evening.',
+    'Hello 晚上好': 'Hello, good evening.',
     '晚上好呀': 'Good evening.',
     '晚上好': 'Good evening.',
     '你好': 'Hello.',
+    'hi ni hao': 'Hi, how are you?',
+    'ni bu xiang hua ren': 'You do not look Chinese.',
     'Hello 晚上好呀 好像很冷 😁': 'Hello, good evening. It seems quite cold 😁',
     '好像很冷 😁': 'It seems quite cold 😁',
     '好像很冷': 'It seems quite cold.',
     '信不信马六甲的太阳能晒干你😂': 'Believe it or not, the sun in Malacca can dry you up 😂',
     '信不信马六甲的太阳能晒干你😆': 'Believe it or not, the sun in Malacca can dry you up 😆',
+    '信不信马六甲的太阳能晒干你': 'Believe it or not, the sun in Malacca can dry you up.',
     '新加坡也不是一样': 'Singapore is the same too.',
-    '新那边最近好像也有下雨的吧': 'It seems like it has also been raining over there recently, right?',
-    '新那边最近好像也有下雨的吧 Ya': 'It seems like it has also been raining over there recently, right? Ya.',
+    '新那边最近好像也有下雨的吧': 'It seems like it has also been raining over in Singapore recently, right?',
+    '新那边最近好像也有下雨的吧 Ya': 'It seems like it has also been raining over in Singapore recently, right? Ya.',
     '新加坡最近也一直下雨。': 'Singapore has also been raining recently.',
-    '新那边最近好像也有下雨的吧': 'It seems like it has also been raining on your side recently, right?',
     'Ya': 'Ya.',
     'ya': 'Ya.',
+    '哈哈哈': 'Hahaha.',
+    'hahaha': 'Hahaha.',
+    '为什么今天有空': 'Why are you free today?',
+    '空每天都有': 'There is always free time every day.',
+    '今天看起来有点不一样': 'You seem a little different today.',
+    '那里不一样？': 'What is different?',
+    '那里不一样?': 'What is different?',
+    '哪里不一样？': 'What is different?',
+    '哪里不一样?': 'What is different?',
+    '明天聊 很晚了 要睡觉啦 晚安': 'Let’s chat tomorrow. It is late, I need to sleep. Good night.',
+    '明天聊 很晚了 要睡觉啦 晚安': 'Let’s chat tomorrow. It is late, I need to sleep. Good night.',
     '话说你这么帅的一个人 你太太怎么舍得和你离婚呀': 'By the way, you are such a handsome person. How could your wife bear to divorce you?',
-    '话说你这么帅的一个人 你太太怎么舍得和你离婚呀': 'By the way, you are such a handsome person. How could your wife bear to divorce you?',
-    '我说话的方式比较直 如果有得罪的地方 我很抱歉': 'I speak quite directly. If I offended you in any way, I am sorry.',
     '我说话的方式比较直 如果有得罪的地方 我很抱歉': 'I speak quite directly. If anything I said offended you, I am sorry.',
     '对美女没有兴趣吗？？': 'Are you not interested in beautiful women??',
     '对美女没有兴趣吗？': 'Are you not interested in beautiful women?',
-    '对美女没有兴趣吗？？': 'Are you not interested in beautiful women??',
-    '不过美食和风景比较容易实现': 'But food and scenery are easier to enjoy in real life.',
     '不过美食和风景比较容易实现': 'But food and scenery are easier to experience in real life.',
-    'Hello 晚上好！新加坡最近也一直下雨。': 'Hello, good evening! Singapore has also been raining recently.',
     '一看这三个字 就是渣男的经典答复': 'Just seeing those three words, I can tell it is a classic playboy reply.',
     '你认识很多？': 'Do you know many women?',
+    '你认识很多?': 'Do you know many women?',
     '不认识 看Tik Tok多了还不知道吗': 'No, I do not. After watching so much TikTok, wouldn’t I know?',
+    '不认识 看TikTok多了还不知道吗': 'No, I do not. After watching so much TikTok, wouldn’t I know?',
     '现在也认识到了呀': 'Well, now you have met one too.',
     '我也是在TikTok 看过很多网红': 'I have also seen many influencers on TikTok.',
     '我在TikTok看的都美食和各地景点 很少有看到美女': 'What I see on TikTok is mostly food and scenic places. I rarely see beautiful women.',
     '你是想看东京的女优美女吧 😂': 'You just want to see beautiful Japanese actresses in Tokyo, right? 😂',
-    '像泰国？还印度？': 'Like Thailand? Or India?',
-    '哈哈哈': 'Hahaha.',
-    'hahaha': 'Hahaha.',
-    'hi ni hao': 'Hi, how are you?',
-    'ni bu xiang hua ren': 'You do not look Chinese.',
-    '信不信马六甲的太阳能晒干you😂': 'Believe it or not, the sun in Malacca can dry you up 😂',
-    '新加坡也不是一样': 'Singapore is the same too.',
-    '新那边最近好像也有下雨的吧': 'It seems like it has also been raining over in Singapore recently, right?',
-    '话说你这么帅的一个人 你太太怎么舍得和你离婚呀': 'By the way, you are such a handsome person. How could your wife bear to divorce you?',
     '你是想看东京的女优美女吧 😅': 'You just want to see beautiful Japanese actresses in Tokyo, right? 😅',
+    '像泰国？还印度？': 'Like Thailand? Or India?',
+    '像泰国? 还印度?': 'Like Thailand? Or India?',
     'Hi, can I check what time the briefing starts?': 'Hi, can I check what time the briefing starts?',
     'Hi, the briefing starts at 7.30 pm.': 'Hi, the briefing starts at 7.30 pm.'
   };
 
-  if (target !== 'English') return `[${target}] ${cleaned}`;
-  if (knownEnglish[cleaned]) return knownEnglish[cleaned];
-  if (!hasChinese(cleaned) && /^[\x00-\x7F\s.,!?😂🤣😁😆😄'’\-:;()]+$/.test(cleaned)) return cleaned;
+  if (exact[cleaned]) return exact[cleaned];
+  if (!hasChinese(cleaned) && /^[\x00-\x7F\s.,!?😂🤣😁😆😄😅'’\-:;()]+$/.test(cleaned)) return cleaned;
 
-  // Better local fallback for common chat patterns. It avoids fake word-by-word replacements.
-  const phraseRules = [
+  const rules = [
+    [/^明天聊.*晚.*睡觉.*晚安/, 'Let’s chat tomorrow. It is late, I need to sleep. Good night.'],
+    [/为什么.*今天.*有空/, 'Why are you free today?'],
+    [/空.*每天.*有/, 'There is always free time every day.'],
+    [/今天.*看起来.*不一样/, 'You seem a little different today.'],
+    [/[哪那]里.*不一样/, 'What is different?'],
     [/新加坡.*一样/, 'Singapore is the same too.'],
     [/新.*最近.*下雨/, 'It seems like it has also been raining over there recently.'],
     [/太阳.*晒干/, 'The sun there can really dry you up.'],
@@ -182,16 +192,20 @@ function fallbackTranslate(text, target) {
     [/说话.*比较直.*抱歉/, 'I speak quite directly. If anything I said offended you, I am sorry.'],
     [/美女.*兴趣/, 'Are you not interested in beautiful women?'],
     [/美食.*风景.*容易实现/, 'But food and scenery are easier to experience in real life.'],
-    [/TikTok.*美食.*景点/, 'What I see on TikTok is mostly food and scenic places.'],
+    [/Tik\s*Tok.*美食.*景点/, 'What I see on TikTok is mostly food and scenic places.'],
     [/东京.*女优.*美女/, 'You just want to see beautiful Japanese actresses in Tokyo, right?'],
     [/泰国.*印度/, 'Like Thailand? Or India?'],
     [/你认识很多/, 'Do you know many women?'],
-    [/现在.*认识到/, 'Well, now you have met one too.']
+    [/现在.*认识到/, 'Well, now you have met one too.'],
+    [/晚上好/, 'Good evening.'],
+    [/好像.*冷/, 'It seems quite cold.']
   ];
-  for (const [pattern, translation] of phraseRules) {
+  for (const [pattern, translation] of rules) {
     if (pattern.test(cleaned)) return translation;
   }
-  return 'Translation needs online AI: ' + cleaned;
+
+  // Clean fallback: show original instead of ugly placeholder text.
+  return cleaned;
 }
 
 async function translateWithAI(messages, target) {
@@ -304,8 +318,8 @@ function App() {
       const result = await translateWithAI(messages, targetLang);
       if (!cancelled) {
         setTranslations(result);
-        const usedOnlineAI = !result.some(t => String(t).startsWith('Translation needs online AI:'));
-        setTranslationStatus(usedOnlineAI ? 'Translated' : 'Translated with local fallback. Add OPENAI_API_KEY in Vercel for full AI translation.');
+        const sameAsOriginalCount = result.filter((t, i) => normaliseText(t || '') === normaliseText(messages[i]?.text || '') && hasChinese(messages[i]?.text || '')).length;
+        setTranslationStatus(sameAsOriginalCount === 0 ? 'Translated' : 'Translated with local fallback for some lines. Add OPENAI_API_KEY in Vercel for full AI translation.');
       }
     }
     runTranslation();
