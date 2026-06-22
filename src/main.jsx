@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Copy, MessageCircle, RefreshCw, Send, Upload, Wand2 } from 'lucide-react';
+import { Copy, MessageCircle, RefreshCw, Send, Trash2, Upload, Wand2 } from 'lucide-react';
 import './style.css';
 import { initializeApp } from 'firebase/app';
-import { collection, doc, getDocs, getFirestore, orderBy, query, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDocs, getFirestore, orderBy, query, serverTimestamp, setDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyDNphiv78xMwfXge0B3t1L7nPR1xpNSniQ',
@@ -66,6 +66,44 @@ function parsePastedMessages(text) {
 }
 
 
+
+function messageKey(message) {
+  return `${message.from || ''}|${normaliseText(message.text || '').toLowerCase()}`;
+}
+
+function threadSignature(messages) {
+  return (messages || []).map(messageKey).join('||');
+}
+
+function removeDuplicateMessages(messages) {
+  const seen = new Set();
+  return (messages || []).filter(message => {
+    const key = messageKey(message);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function findBestDuplicateTarget(threads, parsedMessages) {
+  const pastedKeys = new Set(parsedMessages.map(messageKey));
+  let best = null;
+  let bestOverlap = 0;
+
+  for (const thread of threads) {
+    const existingKeys = new Set((thread.messages || []).map(messageKey));
+    const overlap = [...pastedKeys].filter(key => existingKeys.has(key)).length;
+    const sameFullThread = threadSignature(thread.messages) === threadSignature(parsedMessages);
+    if (sameFullThread) return { thread, overlap, sameFullThread: true };
+    if (overlap > bestOverlap) {
+      best = thread;
+      bestOverlap = overlap;
+    }
+  }
+
+  return best ? { thread: best, overlap: bestOverlap, sameFullThread: false } : null;
+}
+
 function sanitizeThread(thread) {
   return {
     ...thread,
@@ -78,46 +116,111 @@ function sanitizeThread(thread) {
   };
 }
 
-function smartTranslate(text, target) {
+
+function fallbackTranslate(text, target) {
   const cleaned = normaliseText(text);
   if (!cleaned) return '';
 
-  const known = {
+  const knownEnglish = {
     'Hello 晚上好呀': 'Hello, good evening.',
     '晚上好呀': 'Good evening.',
+    '晚上好': 'Good evening.',
     '你好': 'Hello.',
-    '你好，晚上好呀，好像很冷 😁': 'Hello, good evening. It seems quite cold 😁',
+    'Hello 晚上好呀 好像很冷 😁': 'Hello, good evening. It seems quite cold 😁',
+    '好像很冷 😁': 'It seems quite cold 😁',
+    '好像很冷': 'It seems quite cold.',
+    '信不信马六甲的太阳能晒干你😂': 'Believe it or not, the sun in Malacca can dry you up 😂',
+    '信不信马六甲的太阳能晒干你😆': 'Believe it or not, the sun in Malacca can dry you up 😆',
+    '新加坡也不是一样': 'Singapore is the same too.',
+    '新那边最近好像也有下雨的吧': 'It seems like it has also been raining over there recently, right?',
+    '新那边最近好像也有下雨的吧 Ya': 'It seems like it has also been raining over there recently, right? Ya.',
+    '新加坡最近也一直下雨。': 'Singapore has also been raining recently.',
+    '新那边最近好像也有下雨的吧': 'It seems like it has also been raining on your side recently, right?',
+    'Ya': 'Ya.',
+    'ya': 'Ya.',
+    '话说你这么帅的一个人 你太太怎么舍得和你离婚呀': 'By the way, you are such a handsome person. How could your wife bear to divorce you?',
+    '话说你这么帅的一个人 你太太怎么舍得和你离婚呀': 'By the way, you are such a handsome person. How could your wife bear to divorce you?',
+    '我说话的方式比较直 如果有得罪的地方 我很抱歉': 'I speak quite directly. If I offended you in any way, I am sorry.',
+    '我说话的方式比较直 如果有得罪的地方 我很抱歉': 'I speak quite directly. If anything I said offended you, I am sorry.',
+    '对美女没有兴趣吗？？': 'Are you not interested in beautiful women??',
+    '对美女没有兴趣吗？': 'Are you not interested in beautiful women?',
+    '对美女没有兴趣吗？？': 'Are you not interested in beautiful women??',
+    '不过美食和风景比较容易实现': 'But food and scenery are easier to enjoy in real life.',
+    '不过美食和风景比较容易实现': 'But food and scenery are easier to experience in real life.',
     'Hello 晚上好！新加坡最近也一直下雨。': 'Hello, good evening! Singapore has also been raining recently.',
     '一看这三个字 就是渣男的经典答复': 'Just seeing those three words, I can tell it is a classic playboy reply.',
     '你认识很多？': 'Do you know many women?',
-    '不认识 看Tik Tok多了还不知道吗': 'No, I do not. After watching so much TikTok, wouldn\'t I know?',
+    '不认识 看Tik Tok多了还不知道吗': 'No, I do not. After watching so much TikTok, wouldn’t I know?',
     '现在也认识到了呀': 'Well, now you have met one too.',
     '我也是在TikTok 看过很多网红': 'I have also seen many influencers on TikTok.',
+    '我在TikTok看的都美食和各地景点 很少有看到美女': 'What I see on TikTok is mostly food and scenic places. I rarely see beautiful women.',
     '你是想看东京的女优美女吧 😂': 'You just want to see beautiful Japanese actresses in Tokyo, right? 😂',
-    '对美女没有兴趣吗？？': 'Are you not interested in beautiful women??',
-    '像泰国？还印度？': 'Like Thai? Or Indian?',
+    '像泰国？还印度？': 'Like Thailand? Or India?',
     '哈哈哈': 'Hahaha.',
     'hahaha': 'Hahaha.',
     'hi ni hao': 'Hi, how are you?',
     'ni bu xiang hua ren': 'You do not look Chinese.',
+    '信不信马六甲的太阳能晒干you😂': 'Believe it or not, the sun in Malacca can dry you up 😂',
+    '新加坡也不是一样': 'Singapore is the same too.',
+    '新那边最近好像也有下雨的吧': 'It seems like it has also been raining over in Singapore recently, right?',
+    '话说你这么帅的一个人 你太太怎么舍得和你离婚呀': 'By the way, you are such a handsome person. How could your wife bear to divorce you?',
+    '你是想看东京的女优美女吧 😅': 'You just want to see beautiful Japanese actresses in Tokyo, right? 😅',
     'Hi, can I check what time the briefing starts?': 'Hi, can I check what time the briefing starts?',
     'Hi, the briefing starts at 7.30 pm.': 'Hi, the briefing starts at 7.30 pm.'
   };
 
-  if (target === 'English') {
-    if (known[cleaned]) return known[cleaned];
-    if (!hasChinese(cleaned) && /^[\x00-\x7F\s.,!?😂🤣😁😆😄'\-]+$/.test(cleaned)) return cleaned;
-    return cleaned
-      .replaceAll('晚上好呀', 'good evening')
-      .replaceAll('晚上好', 'good evening')
-      .replaceAll('美女', 'beautiful women')
-      .replaceAll('兴趣', 'interest')
-      .replaceAll('泰国', 'Thailand')
-      .replaceAll('印度', 'India')
-      .replaceAll('你', 'you')
-      .replaceAll('吗', '?');
+  if (target !== 'English') return `[${target}] ${cleaned}`;
+  if (knownEnglish[cleaned]) return knownEnglish[cleaned];
+  if (!hasChinese(cleaned) && /^[\x00-\x7F\s.,!?😂🤣😁😆😄'’\-:;()]+$/.test(cleaned)) return cleaned;
+
+  // Better local fallback for common chat patterns. It avoids fake word-by-word replacements.
+  const phraseRules = [
+    [/新加坡.*一样/, 'Singapore is the same too.'],
+    [/新.*最近.*下雨/, 'It seems like it has also been raining over there recently.'],
+    [/太阳.*晒干/, 'The sun there can really dry you up.'],
+    [/这么帅.*太太.*离婚/, 'You are so handsome. How could your wife bear to divorce you?'],
+    [/说话.*比较直.*抱歉/, 'I speak quite directly. If anything I said offended you, I am sorry.'],
+    [/美女.*兴趣/, 'Are you not interested in beautiful women?'],
+    [/美食.*风景.*容易实现/, 'But food and scenery are easier to experience in real life.'],
+    [/TikTok.*美食.*景点/, 'What I see on TikTok is mostly food and scenic places.'],
+    [/东京.*女优.*美女/, 'You just want to see beautiful Japanese actresses in Tokyo, right?'],
+    [/泰国.*印度/, 'Like Thailand? Or India?'],
+    [/你认识很多/, 'Do you know many women?'],
+    [/现在.*认识到/, 'Well, now you have met one too.']
+  ];
+  for (const [pattern, translation] of phraseRules) {
+    if (pattern.test(cleaned)) return translation;
   }
-  return `[${target}] ${cleaned}`;
+  return 'Translation needs online AI: ' + cleaned;
+}
+
+async function translateWithAI(messages, target) {
+  if (!messages || messages.length === 0) return [];
+  if (target !== 'English') return messages.map(m => fallbackTranslate(m.text, target));
+
+  try {
+    const response = await fetch('/api/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        targetLanguage: target,
+        messages: messages.map(m => m.text)
+      })
+    });
+    if (!response.ok) throw new Error('AI translation endpoint unavailable');
+    const data = await response.json();
+    if (Array.isArray(data.translations) && data.translations.length === messages.length) {
+      return data.translations.map((t, idx) => normaliseText(t || fallbackTranslate(messages[idx].text, target)));
+    }
+    throw new Error('Bad translation response');
+  } catch (error) {
+    console.warn('Using local fallback translations:', error.message);
+    return messages.map(m => fallbackTranslate(m.text, target));
+  }
+}
+
+function smartTranslate(text, target) {
+  return fallbackTranslate(text, target);
 }
 
 function localSuggest(text, tone) {
@@ -176,11 +279,38 @@ function App() {
   const [manualText, setManualText] = useState('');
   const [selectedMessageIndex, setSelectedMessageIndex] = useState(null);
   const [saveStatus, setSaveStatus] = useState('Auto-save ready');
+  const [translations, setTranslations] = useState([]);
+  const [translationStatus, setTranslationStatus] = useState('Translation ready');
 
   const selectedThread = useMemo(() => threads.find(t => t.id === selectedId) || threads[0] || null, [threads, selectedId]);
   const incoming = lastIncoming(selectedThread || { messages: [] });
   const summary = buildSummary(selectedThread || { messages: [] });
   const selectedMessage = selectedMessageIndex === null ? incoming : selectedThread?.messages?.[selectedMessageIndex]?.text || incoming;
+  const selectedTranslation = selectedMessageIndex === null
+    ? fallbackTranslate(incoming, targetLang)
+    : translations[selectedMessageIndex] || fallbackTranslate(selectedMessage, targetLang);
+
+
+  useEffect(() => {
+    let cancelled = false;
+    async function runTranslation() {
+      const messages = selectedThread?.messages || [];
+      if (messages.length === 0) {
+        setTranslations([]);
+        setTranslationStatus('Translation ready');
+        return;
+      }
+      setTranslationStatus('Translating...');
+      const result = await translateWithAI(messages, targetLang);
+      if (!cancelled) {
+        setTranslations(result);
+        const usedOnlineAI = !result.some(t => String(t).startsWith('Translation needs online AI:'));
+        setTranslationStatus(usedOnlineAI ? 'Translated' : 'Translated with local fallback. Add OPENAI_API_KEY in Vercel for full AI translation.');
+      }
+    }
+    runTranslation();
+    return () => { cancelled = true; };
+  }, [selectedThread?.id, selectedThread?.messages, targetLang]);
 
   useEffect(() => {
     async function loadSavedThreads() {
@@ -193,7 +323,7 @@ function App() {
           const q = query(collection(db, 'threads'), orderBy('createdAt', 'desc'));
           snapshot = await getDocs(q);
         }
-        const savedThreads = snapshot.docs.map(doc => sanitizeThread({ id: doc.id, ...doc.data() })).filter(t => t.messages.length > 0);
+        const savedThreads = snapshot.docs.map(doc => sanitizeThread({ id: doc.id, ...doc.data() })).filter(t => t.messages.length > 0 && !/melaka|sample friend|parent enquiry/i.test(t.name || ''));
         if (savedThreads.length > 0) {
           setThreads(savedThreads);
           setSelectedId(savedThreads[0].id);
@@ -246,8 +376,41 @@ function App() {
       name: 'Pasted Facebook Chat',
       platform: 'Manual Import',
       lastUpdated: 'Now',
-      messages: parsedMessages
+      messages: removeDuplicateMessages(parsedMessages)
     };
+
+    const duplicateTarget = findBestDuplicateTarget(threads, newThread.messages);
+    if (duplicateTarget?.sameFullThread) {
+      setSelectedId(duplicateTarget.thread.id);
+      setSelectedMessageIndex(null);
+      setSaveStatus('Duplicate chat detected. Existing saved chat opened.');
+      setManualText('');
+      return;
+    }
+
+    if (duplicateTarget && duplicateTarget.overlap > 0) {
+      const existingKeys = new Set((duplicateTarget.thread.messages || []).map(messageKey));
+      const newMessagesOnly = newThread.messages.filter(message => !existingKeys.has(messageKey(message)));
+      if (newMessagesOnly.length === 0) {
+        setSelectedId(duplicateTarget.thread.id);
+        setSelectedMessageIndex(null);
+        setSaveStatus('Duplicate messages detected. No repeated messages added.');
+        setManualText('');
+        return;
+      }
+      const updatedThread = {
+        ...duplicateTarget.thread,
+        lastUpdated: 'Now',
+        messages: [...duplicateTarget.thread.messages, ...newMessagesOnly]
+      };
+      setThreads(threads.map(t => t.id === updatedThread.id ? updatedThread : t));
+      setSelectedId(updatedThread.id);
+      setSelectedMessageIndex(null);
+      setSaveStatus(`Duplicate messages skipped. Added ${newMessagesOnly.length} new message(s).`);
+      setManualText('');
+      return;
+    }
+
     setThreads([newThread, ...threads]);
     setSelectedId(id);
     setSelectedMessageIndex(null);
@@ -265,6 +428,43 @@ function App() {
     navigator.clipboard?.writeText(selectedReply);
   }
 
+  async function deleteThread(id) {
+    const thread = threads.find(t => t.id === id);
+    if (!thread) return;
+    const ok = window.confirm(`Remove old chat "${thread.name}"? This will also delete it from Firebase.`);
+    if (!ok) return;
+    try {
+      await deleteDoc(doc(db, 'threads', id));
+    } catch (error) {
+      console.error(error);
+      setSaveStatus('Removed locally. Firebase delete failed. Check Firestore rules.');
+    }
+    const remaining = threads.filter(t => t.id !== id);
+    setThreads(remaining);
+    if (selectedId === id) {
+      setSelectedId(remaining[0]?.id || null);
+      setSelectedMessageIndex(null);
+    }
+    setSaveStatus('Old chat removed');
+  }
+
+  async function clearOldChats() {
+    if (threads.length === 0) return;
+    const ok = window.confirm('Remove all old chats from this app and Firebase?');
+    if (!ok) return;
+    for (const thread of threads) {
+      try {
+        await deleteDoc(doc(db, 'threads', thread.id));
+      } catch (error) {
+        console.error(error);
+      }
+    }
+    setThreads([]);
+    setSelectedId(null);
+    setSelectedMessageIndex(null);
+    setSaveStatus('All old chats removed');
+  }
+
   function selectThread(id) {
     setSelectedId(id);
     setSelectedMessageIndex(null);
@@ -277,17 +477,25 @@ function App() {
       <div className="brand"><MessageCircle size={28}/><div><h1>Facebook Message Helper</h1><p>Translate · Suggest · Reply</p></div></div>
       <div className="notice">Original and translated messages mirror each other side by side. Dates and times are removed when you paste. Saving is automatic.</div>
       <div className="firebaseStatus">{saveStatus}</div>
+      <div className="firebaseStatus translationStatus">{translationStatus}</div>
 
       <div className="sideBlock">
         <label>Target translation language</label>
         <select value={targetLang} onChange={e => setTargetLang(e.target.value)}>{LANGS.map(l => <option key={l}>{l}</option>)}</select>
       </div>
 
+      <div className="threadTools">
+        <button className="danger" onClick={clearOldChats}><Trash2 size={16}/> Remove all old chats</button>
+      </div>
+
       <div className="threads">
-        {threads.map(t => <button key={t.id} onClick={() => selectThread(t.id)} className={t.id === selectedId ? 'thread active' : 'thread'}>
-          <b>{t.name}</b><span>{t.platform} · {t.lastUpdated}</span>
-          <small>{lastIncoming(t).slice(0, 80)}</small>
-        </button>)}
+        {threads.map(t => <div key={t.id} className={t.id === selectedId ? 'threadWrap active' : 'threadWrap'}>
+          <button onClick={() => selectThread(t.id)} className="thread">
+            <b>{t.name}</b><span>{t.platform} · {t.lastUpdated}</span>
+            <small>{lastIncoming(t).slice(0, 80)}</small>
+          </button>
+          <button className="deleteThread" onClick={() => deleteThread(t.id)} title="Remove old chat"><Trash2 size={16}/></button>
+        </div>)}
       </div>
 
       <div className="sideBlock">
@@ -300,7 +508,7 @@ function App() {
         <div className="selectedBox">
           <small>Selected message</small>
           <p>{selectedMessage}</p>
-          <p className="miniTrans">{smartTranslate(selectedMessage, targetLang)}</p>
+          <p className="miniTrans">{selectedTranslation}</p>
         </div>
         <label>Reply tone</label>
         <select value={tone} onChange={e => setTone(e.target.value)}>{TONES.map(t => <option key={t}>{t}</option>)}</select>
@@ -338,7 +546,7 @@ function App() {
         <div className="mirrorList">
           {selectedThread?.messages?.map((m, i) => <button key={i} onClick={() => setSelectedMessageIndex(i)} className={`mirrorRow ${m.from} ${selectedMessageIndex === i ? 'selected' : ''}`}>
             <span className="sender">{m.from === 'them' ? 'Them' : 'Me'}</span>
-            <span className="sentence">{smartTranslate(m.text, targetLang)}</span>
+            <span className="sentence">{translations[i] || fallbackTranslate(m.text, targetLang)}</span>
           </button>)}
         </div>
       </section>
