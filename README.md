@@ -1,43 +1,21 @@
 # Facebook Message Helper
 
-A desktop/mobile-friendly web app for Facebook/Messenger-style message help.
+Safe starter app for reading pasted/imported Facebook messages, translating the conversation in the right panel, and generating reply suggestions.
 
-## What it does now
-- Paste/import Facebook messages line by line.
-- View them as chat threads.
-- Translate the latest incoming message.
-- Generate short reply suggestions.
-- Copy the selected reply and open Messenger.
+## What changed
 
-## Important Facebook limitation
-This app does **not** secretly scrape personal Facebook Messenger inboxes. Meta's official Messenger Platform is mainly for Facebook Page/business messaging and requires a Page, permissions, webhooks, review, and access tokens.
+- Translation now appears directly on the right panel.
+- Supports Translation Only, Dual Language, and Original Only modes.
+- Clicking any chat bubble shows that selected message in the AI Reply Helper.
+- API key entry has been removed from the app.
 
 ## Run locally
+
 ```bash
 npm install
 npm run dev
 ```
 
-## Build
-```bash
-npm run build
-```
+## Notes
 
-## Host on Vercel
-1. Upload this project to GitHub.
-2. Import the GitHub repo into Vercel.
-3. Set environment variables for your AI API key in Vercel, not inside the browser code.
-4. Deploy.
-
-## Recommended next build
-Add a `/api/ai` server route in Vercel/Node so the browser sends messages to your backend, and the backend calls your AI provider for translation/reply suggestions. This keeps API keys hidden.
-
-## Official Facebook Page integration idea
-For a Facebook Page inbox, add:
-- Meta Developer app
-- Messenger Platform product
-- Webhook URL
-- Page access token
-- `pages_messaging` and related permissions
-
-Then incoming Page messages can be saved to a database and displayed in this app.
+This build does not secretly scrape personal Facebook Messenger inboxes. Use paste/import now. Official Facebook Page messages can be connected later through Meta-approved Messenger Platform webhooks.
