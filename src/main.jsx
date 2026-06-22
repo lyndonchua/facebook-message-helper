@@ -30,31 +30,6 @@ function hasChinese(text) {
   return /[\u3400-\u9fff]/.test(text);
 }
 
-function inferChatLanguage(thread) {
-  const combined = (thread?.messages || []).map(m => m.text || '').join(' ');
-  if (hasChinese(combined)) return 'Chinese';
-  return 'English';
-}
-
-
-function extractLastMeaningfulSentence(text) {
-  const cleaned = normaliseText(text || '');
-  if (!cleaned) return '';
-  const withoutTime = cleaned
-    .replace(/\b\d{1,2}:\d{2}\s*(am|pm)?\b/gi, ' ')
-    .replace(/\b(today|yesterday|seen|delivered|sent|edited)\b/gi, ' ')
-    .trim();
-
-  const chunks = withoutTime
-    .split(/(?<=[。！？!?\.])\s+|[\n\r]+|[。！？!?\.]+/)
-    .map(part => normaliseText(part))
-    .filter(part => part && !isDateOrTimeLine(part));
-
-  const meaningful = chunks.filter(part => /[\p{L}\p{N}\u3400-\u9fff]/u.test(part));
-  if (meaningful.length > 0) return meaningful[meaningful.length - 1];
-  return withoutTime;
-}
-
 function normaliseText(text) {
   return text.replace(/\s+/g, ' ').trim();
 }
@@ -141,6 +116,21 @@ function sanitizeThread(thread) {
   };
 }
 
+
+function getLastMeaningfulSentence(text) {
+  const cleaned = normaliseText(text || '').replace(/^[😂🤣😁😆😄😅\s]+|[😂🤣😁😆😄😅\s]+$/g, '').trim();
+  if (!cleaned) return normaliseText(text || '');
+  const parts = cleaned
+    .split(/(?<=[。！？!?])\s+|[\n\r]+|(?<=[。！？!?])/)
+    .map(part => part.trim())
+    .filter(part => part && !/^[😂🤣😁😆😄😅]+$/.test(part));
+  return parts.length ? parts[parts.length - 1] : cleaned;
+}
+
+function chatUsesChinese(thread, text) {
+  const allText = `${text || ''} ${(thread?.messages || []).map(m => m.text).join(' ')}`;
+  return hasChinese(allText);
+}
 
 function fallbackTranslate(text, target) {
   const cleaned = normaliseText(text);
@@ -262,71 +252,54 @@ function smartTranslate(text, target) {
   return fallbackTranslate(text, target);
 }
 
-function localSuggest(text, tone, chatLanguage = 'English') {
-  const lower = (text || '').toLowerCase();
-  const isChineseChat = chatLanguage === 'Chinese' || hasChinese(text || '');
-
-  if (isChineseChat) {
-    if (text.includes('晚安') || text.includes('睡觉') || text.includes('很晚')) {
-      return [
-        '好的，晚安，早点休息。明天再聊 😊',
-        '好，早点休息。明天有空我们再慢慢聊。',
-        '晚安，做个好梦。明天再继续聊 😄'
-      ];
-    }
-    if (text.includes('女优') || text.includes('美女') || lower.includes('beaut')) {
-      return [
-        '哈哈，你是不是吃醋了？放心啦，我只是想去看风景和吃美食。',
-        '没有啦，比起美女，我觉得会聊天的人更有魅力。',
-        '哈哈，我想去日本是看风景、文化和美食，不是只看美女 😂'
-      ];
-    }
-    if (text.includes('认识很多')) {
-      return [
-        '没有啦，只是 TikTok 看多了一点而已 😂',
-        '不多啦。会聊天的朋友比美女更难遇到 😄',
-        '哈哈，你是在试探我吗？'
-      ];
-    }
-    if (text.includes('有空') || text.includes('不一样') || text.includes('很冷')) {
-      return [
-        '哈哈，今天刚好比较有空，所以可以多聊一下。',
-        '哪里不一样？你这样说我有点好奇了 😂',
-        '是啊，天气最近有点奇怪，一下热一下冷。'
-      ];
-    }
-    if (text.includes('抱歉') || text.includes('得罪')) {
-      return [
-        '没关系啦，我知道你不是故意的。直接一点也挺好的。',
-        '不用抱歉，我没有介意。这样聊天反而比较真实。',
-        '哈哈没事，我不会那么容易生气的。'
-      ];
-    }
-    return [
-      '哈哈，我明白。我们慢慢聊。',
-      '我懂你的意思，等我一下，我认真回复你。',
-      '可以啊，我们慢慢聊，不用太认真 😂'
+function localSuggest(text, tone, thread) {
+  const targetText = getLastMeaningfulSentence(text);
+  const lower = targetText.toLowerCase();
+  const shouldReplyChinese = chatUsesChinese(thread, targetText);
+  if (/晚安|睡觉|很晚|good night|sleep|late/i.test(targetText)) {
+    return shouldReplyChinese ? [
+      '好的，早点休息，晚安。明天再聊。',
+      '明白，已经很晚了。你好好休息，晚安。',
+      '好的，别太累。祝你睡个好觉，晚安。'
+    ] : [
+      'Sure, rest well. Good night. We can chat tomorrow.',
+      'I understand. It is late, get some rest. Good night.',
+      'No worries, sleep well. Talk tomorrow.'
     ];
   }
-
-  if (lower.includes('beaut')) {
+  if (targetText.includes('女优') || lower.includes('beaut')) {
     return [
-      'Haha, are you jealous? Don’t worry, I’m more interested in scenery and food.',
-      'Not really. I think someone who can chat well is more attractive.',
-      'Haha no, Japan is more about food, culture and scenery for me 😂'
+      '哈哈你吃醋了吗？放心啦，我只是想去看风景和吃美食。',
+      '你是不是怕我看别的美女？其实我觉得会聊天的人更有魅力。',
+      '没有啦，我想去日本是看风景、文化和美食，不是只看美女 😂'
     ];
   }
-  if (lower.includes('hello') || lower.includes('good evening')) {
+  if (targetText.includes('认识很多')) {
     return [
-      'Good evening! How was your day?',
-      'Haha yes, it does feel a little cold. How about your side?',
-      'Good evening! The weather has been quite strange lately.'
+      '没有啦，我只是看 TikTok 多一点而已 😂',
+      '不多啦。会聊天的朋友比美女更难遇到 😄',
+      '哈哈你是在试探我吗？'
+    ];
+  }
+  if (targetText.includes('晚上好') || lower.includes('hello')) {
+    return [
+      '晚上好呀！你今天过得怎么样？',
+      '哈哈是有点冷，你那边呢？',
+      '晚上好！最近天气真的很奇怪，一下热一下下雨。'
+    ];
+  }
+  if (shouldReplyChinese) {
+    const toneLabel = tone === 'Humble' ? '谦虚' : tone === 'Playful' ? '轻松' : tone === 'Polite' ? '礼貌' : tone === 'Friendly' ? '友善' : tone === 'Professional' ? '正式' : '简单';
+    return [
+      `(${toneLabel}) 好的，我明白。让我想一下再好好回复你。`,
+      `(${toneLabel}) 哈哈，是这样啊。那我等下再跟你说。`,
+      `(${toneLabel}) 明白，谢谢你跟我说。我会认真看一下。`
     ];
   }
   return [
-    `${tone}: Thanks for your message. Let me check and get back to you shortly.`,
-    `${tone}: I understand. Give me a moment and I’ll reply properly.`,
-    `${tone}: Sounds good. I’ll take a look and let you know.`
+    `(${tone}) Thanks for your message. Let me check and get back to you shortly.`,
+    `(${tone}) I understand. Give me a moment and I’ll reply properly.`,
+    `(${tone}) Sounds good. I’ll take a look and let you know.`
   ];
 }
 
@@ -360,15 +333,12 @@ function App() {
   const [translationStatus, setTranslationStatus] = useState('Translation ready');
 
   const selectedThread = useMemo(() => threads.find(t => t.id === selectedId) || threads[0] || null, [threads, selectedId]);
-  const chatLanguage = inferChatLanguage(selectedThread);
   const incoming = lastIncoming(selectedThread || { messages: [] });
   const summary = buildSummary(selectedThread || { messages: [] });
   const selectedMessage = selectedMessageIndex === null ? incoming : selectedThread?.messages?.[selectedMessageIndex]?.text || incoming;
-  const replyTarget = extractLastMeaningfulSentence(selectedMessage);
   const selectedTranslation = selectedMessageIndex === null
     ? fallbackTranslate(incoming, targetLang)
     : translations[selectedMessageIndex] || fallbackTranslate(selectedMessage, targetLang);
-  const replyTargetTranslation = fallbackTranslate(replyTarget, targetLang);
 
 
   useEffect(() => {
@@ -499,7 +469,7 @@ function App() {
   }
 
   function suggest() {
-    const replies = localSuggest(replyTarget || selectedMessage, tone, chatLanguage);
+    const replies = localSuggest(selectedMessage, tone, selectedThread);
     setSuggestions(replies);
     setSelectedReply(replies[0] || '');
   }
@@ -585,12 +555,12 @@ function App() {
 
       <div className="sideBlock">
         <b>Reply Helper</b>
-        <div className="replyLang">Reply will be copied in: <b>{chatLanguage}</b></div>
         <div className="selectedBox">
           <small>Selected message</small>
           <p>{selectedMessage}</p>
-          {replyTarget && replyTarget !== selectedMessage ? <p className="targetLine"><b>Reply target:</b> {replyTarget}</p> : null}
-          <p className="miniTrans">{replyTarget && replyTarget !== selectedMessage ? replyTargetTranslation : selectedTranslation}</p>
+          <small>Reply target</small>
+          <p className="replyTarget">{getLastMeaningfulSentence(selectedMessage)}</p>
+          <p className="miniTrans">{selectedTranslation}</p>
         </div>
         <label>Reply tone</label>
         <select value={tone} onChange={e => setTone(e.target.value)}>{TONES.map(t => <option key={t}>{t}</option>)}</select>
