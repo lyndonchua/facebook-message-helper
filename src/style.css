@@ -3,3 +3,7 @@
   font-size: 0.88rem;
   opacity: 0.95;
 }
+
+/* Equal 3-column layout: left controls, original, translation */
+.app{grid-template-columns:minmax(300px,1fr) minmax(0,1fr) minmax(0,1fr);gap:18px;padding:0 18px;background:#edf2f7}.sidebar{height:100vh;max-height:100vh;border-radius:0}.main{display:contents}.panel{margin:22px 0}.mirrorPanel{height:calc(100vh - 44px);min-height:0}.mirrorList{flex:1}.replyTarget{color:#fde68a;font-weight:800;font-size:14px;margin-top:2px!important}
+@media(max-width:1100px){.app{display:block;padding:0}.sidebar{height:auto;max-height:none}.main{display:grid;grid-template-columns:1fr;padding:18px}.panel{margin:0}.mirrorPanel{height:auto;min-height:420px}}

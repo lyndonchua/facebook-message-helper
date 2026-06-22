@@ -117,6 +117,21 @@ function sanitizeThread(thread) {
 }
 
 
+function getLastMeaningfulSentence(text) {
+  const cleaned = normaliseText(text || '').replace(/^[😂🤣😁😆😄😅\s]+|[😂🤣😁😆😄😅\s]+$/g, '').trim();
+  if (!cleaned) return normaliseText(text || '');
+  const parts = cleaned
+    .split(/(?<=[。！？!?])\s+|[\n\r]+|(?<=[。！？!?])/)
+    .map(part => part.trim())
+    .filter(part => part && !/^[😂🤣😁😆😄😅]+$/.test(part));
+  return parts.length ? parts[parts.length - 1] : cleaned;
+}
+
+function chatUsesChinese(thread, text) {
+  const allText = `${text || ''} ${(thread?.messages || []).map(m => m.text).join(' ')}`;
+  return hasChinese(allText);
+}
+
 function fallbackTranslate(text, target) {
   const cleaned = normaliseText(text);
   if (!cleaned) return '';
@@ -237,27 +252,48 @@ function smartTranslate(text, target) {
   return fallbackTranslate(text, target);
 }
 
-function localSuggest(text, tone) {
-  const lower = text.toLowerCase();
-  if (text.includes('女优') || lower.includes('beaut')) {
+function localSuggest(text, tone, thread) {
+  const targetText = getLastMeaningfulSentence(text);
+  const lower = targetText.toLowerCase();
+  const shouldReplyChinese = chatUsesChinese(thread, targetText);
+  if (/晚安|睡觉|很晚|good night|sleep|late/i.test(targetText)) {
+    return shouldReplyChinese ? [
+      '好的，早点休息，晚安。明天再聊。',
+      '明白，已经很晚了。你好好休息，晚安。',
+      '好的，别太累。祝你睡个好觉，晚安。'
+    ] : [
+      'Sure, rest well. Good night. We can chat tomorrow.',
+      'I understand. It is late, get some rest. Good night.',
+      'No worries, sleep well. Talk tomorrow.'
+    ];
+  }
+  if (targetText.includes('女优') || lower.includes('beaut')) {
     return [
       '哈哈你吃醋了吗？放心啦，我只是想去看风景和吃美食。',
       '你是不是怕我看别的美女？其实我觉得会聊天的人更有魅力。',
       '没有啦，我想去日本是看风景、文化和美食，不是只看美女 😂'
     ];
   }
-  if (text.includes('认识很多')) {
+  if (targetText.includes('认识很多')) {
     return [
       '没有啦，我只是看 TikTok 多一点而已 😂',
       '不多啦。会聊天的朋友比美女更难遇到 😄',
       '哈哈你是在试探我吗？'
     ];
   }
-  if (text.includes('晚上好') || lower.includes('hello')) {
+  if (targetText.includes('晚上好') || lower.includes('hello')) {
     return [
       '晚上好呀！你今天过得怎么样？',
       '哈哈是有点冷，你那边呢？',
       '晚上好！最近天气真的很奇怪，一下热一下下雨。'
+    ];
+  }
+  if (shouldReplyChinese) {
+    const toneLabel = tone === 'Humble' ? '谦虚' : tone === 'Playful' ? '轻松' : tone === 'Polite' ? '礼貌' : tone === 'Friendly' ? '友善' : tone === 'Professional' ? '正式' : '简单';
+    return [
+      `(${toneLabel}) 好的，我明白。让我想一下再好好回复你。`,
+      `(${toneLabel}) 哈哈，是这样啊。那我等下再跟你说。`,
+      `(${toneLabel}) 明白，谢谢你跟我说。我会认真看一下。`
     ];
   }
   return [
@@ -433,7 +469,7 @@ function App() {
   }
 
   function suggest() {
-    const replies = localSuggest(selectedMessage, tone);
+    const replies = localSuggest(selectedMessage, tone, selectedThread);
     setSuggestions(replies);
     setSelectedReply(replies[0] || '');
   }
@@ -522,6 +558,8 @@ function App() {
         <div className="selectedBox">
           <small>Selected message</small>
           <p>{selectedMessage}</p>
+          <small>Reply target</small>
+          <p className="replyTarget">{getLastMeaningfulSentence(selectedMessage)}</p>
           <p className="miniTrans">{selectedTranslation}</p>
         </div>
         <label>Reply tone</label>
