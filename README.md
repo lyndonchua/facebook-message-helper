@@ -1,21 +1,16 @@
 # Facebook Message Helper
 
-Safe starter app for reading pasted/imported Facebook messages, translating the conversation in the right panel, and generating reply suggestions.
+A Vite React app for pasting/importing Facebook messages, viewing original and translated messages in mirrored panels, generating reply suggestions, and saving chat records to Firebase Firestore.
 
-## What changed
-
-- Translation now appears directly on the right panel.
-- Supports Translation Only, Dual Language, and Original Only modes.
-- Clicking any chat bubble shows that selected message in the AI Reply Helper.
-- API key entry has been removed from the app.
-
-## Run locally
+## Setup
 
 ```bash
 npm install
 npm run dev
 ```
 
-## Notes
+## Firebase
 
-This build does not secretly scrape personal Facebook Messenger inboxes. Use paste/import now. Official Facebook Page messages can be connected later through Meta-approved Messenger Platform webhooks.
+Firebase config has been added in `src/main.jsx`. The app uses Firestore collection `threads`.
+
+If saving/loading fails, check Firestore rules. For testing, allow authenticated or temporary development access in Firebase Console.

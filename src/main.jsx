@@ -1,12 +1,26 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Copy, Languages, MessageCircle, RefreshCw, Send, Upload, Wand2 } from 'lucide-react';
+import { Copy, MessageCircle, RefreshCw, Send, Upload, Wand2 } from 'lucide-react';
 import './style.css';
+import { initializeApp } from 'firebase/app';
+import { addDoc, collection, getDocs, getFirestore, orderBy, query, serverTimestamp } from 'firebase/firestore';
+
+const firebaseConfig = {
+  apiKey: 'AIzaSyDNphiv78xMwfXge0B3t1L7nPR1xpNSniQ',
+  authDomain: 'facebook-message-helper.firebaseapp.com',
+  projectId: 'facebook-message-helper',
+  storageBucket: 'facebook-message-helper.firebasestorage.app',
+  messagingSenderId: '1086563460953',
+  appId: '1:1086563460953:web:6ed44bc6d16afb7dfa0e48'
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
 
 const DEMO_THREADS = [
   {
-    id: 'melaka',
-    name: 'Melaka Friend',
+    id: 'sample-friend',
+    name: 'Sample Friend',
     platform: 'Facebook',
     lastUpdated: 'Today',
     messages: [
@@ -29,7 +43,6 @@ const DEMO_THREADS = [
 
 const LANGS = ['English', 'Chinese', 'Malay', 'Tamil', 'Japanese', 'Korean', 'Thai', 'Vietnamese'];
 const TONES = ['Simple', 'Humble', 'Friendly', 'Polite', 'Playful', 'Professional'];
-const VIEW_MODES = ['Translation Only', 'Dual Language', 'Original Only'];
 
 function lastIncoming(thread) {
   return [...thread.messages].reverse().find(m => m.from === 'them')?.text || '';
@@ -92,32 +105,70 @@ function buildSummary(thread) {
   if (text.includes('女优') || text.includes('认识很多')) {
     return [
       'She is teasing you in a playful way.',
-      'The topic is about TikTok, Japan, beauties and whether you know many women.',
-      'Good reply style: light, humble and slightly playful.'
+      'Topic: TikTok, Japan, beauties and whether you know many women.',
+      'Best reply style: light, humble and slightly playful.'
     ];
   }
   return [
     'Conversation is straightforward.',
     'Reply clearly and politely.',
-    'Good reply style: simple and helpful.'
+    'Best reply style: simple and helpful.'
   ];
 }
 
 function App() {
   const [threads, setThreads] = useState(DEMO_THREADS);
-  const [selectedId, setSelectedId] = useState('melaka');
+  const [selectedId, setSelectedId] = useState('sample-friend');
   const [targetLang, setTargetLang] = useState('English');
   const [tone, setTone] = useState('Simple');
-  const [viewMode, setViewMode] = useState('Dual Language');
   const [suggestions, setSuggestions] = useState([]);
   const [selectedReply, setSelectedReply] = useState('');
   const [manualText, setManualText] = useState('');
   const [selectedMessageIndex, setSelectedMessageIndex] = useState(null);
+  const [saveStatus, setSaveStatus] = useState('Firebase connected');
 
   const selectedThread = useMemo(() => threads.find(t => t.id === selectedId) || threads[0], [threads, selectedId]);
   const incoming = lastIncoming(selectedThread || { messages: [] });
   const summary = buildSummary(selectedThread || { messages: [] });
   const selectedMessage = selectedMessageIndex === null ? incoming : selectedThread?.messages[selectedMessageIndex]?.text || incoming;
+
+  useEffect(() => {
+    async function loadSavedThreads() {
+      try {
+        const q = query(collection(db, 'threads'), orderBy('createdAt', 'desc'));
+        const snapshot = await getDocs(q);
+        const savedThreads = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (savedThreads.length > 0) {
+          setThreads(savedThreads);
+          setSelectedId(savedThreads[0].id);
+          setSaveStatus(`Loaded ${savedThreads.length} saved record(s) from Firebase`);
+        }
+      } catch (error) {
+        console.error(error);
+        setSaveStatus('Firebase load failed. Check Firestore rules.');
+      }
+    }
+    loadSavedThreads();
+  }, []);
+
+  async function saveThreadToFirebase(thread) {
+    setSaveStatus('Saving to Firebase...');
+    try {
+      const docRef = await addDoc(collection(db, 'threads'), {
+        name: thread.name,
+        platform: thread.platform,
+        lastUpdated: thread.lastUpdated,
+        messages: thread.messages,
+        createdAt: serverTimestamp()
+      });
+      setSaveStatus('Saved to Firebase');
+      return docRef.id;
+    } catch (error) {
+      console.error(error);
+      setSaveStatus('Firebase save failed. Check Firestore rules.');
+      return thread.id;
+    }
+  }
 
   function addManualThread() {
     if (!manualText.trim()) return;
@@ -133,6 +184,13 @@ function App() {
     setSelectedId(id);
     setSelectedMessageIndex(null);
     setManualText('');
+    saveThreadToFirebase(newThread).then(savedId => {
+      if (savedId !== id) {
+        const savedThread = { ...newThread, id: savedId };
+        setThreads(current => current.map(t => t.id === id ? savedThread : t));
+        setSelectedId(savedId);
+      }
+    });
   }
 
   function suggest() {
@@ -155,70 +213,74 @@ function App() {
   return <div className="app">
     <aside className="sidebar">
       <div className="brand"><MessageCircle size={28}/><div><h1>Facebook Message Helper</h1><p>Translate · Suggest · Reply</p></div></div>
-      <div className="notice">Safe build: paste/import Facebook messages. Translation appears directly on the right panel.</div>
+      <div className="notice">Original chat and translation now mirror each other side by side. Controls stay on this left panel.</div>
+      <div className="firebaseStatus">{saveStatus}</div>
+
+      <div className="sideBlock">
+        <label>Target translation language</label>
+        <select value={targetLang} onChange={e => setTargetLang(e.target.value)}>{LANGS.map(l => <option key={l}>{l}</option>)}</select>
+      </div>
+
       <div className="threads">
         {threads.map(t => <button key={t.id} onClick={() => selectThread(t.id)} className={t.id === selectedId ? 'thread active' : 'thread'}>
           <b>{t.name}</b><span>{t.platform} · {t.lastUpdated}</span>
           <small>{lastIncoming(t).slice(0, 80)}</small>
         </button>)}
       </div>
-    </aside>
 
-    <main className="main">
-      <section className="panel chatPanel">
-        <header><h2>{selectedThread?.name}</h2><span>{selectedThread?.platform}</span></header>
-        <div className="chat">
-          {selectedThread?.messages.map((m, i) => <button key={i} onClick={() => setSelectedMessageIndex(i)} className={`bubble ${m.from} ${selectedMessageIndex === i ? 'selected' : ''}`}>{m.text}</button>)}
-        </div>
-      </section>
+      <button className="saveBtn" onClick={async () => saveThreadToFirebase(selectedThread)}>Save current chat to Firebase</button>
 
-      <section className="panel toolsPanel">
-        <h2>Translation Panel</h2>
-        <label>Target translation language</label>
-        <select value={targetLang} onChange={e => setTargetLang(e.target.value)}>{LANGS.map(l => <option key={l}>{l}</option>)}</select>
+      <div className="sideBlock">
+        <b>Conversation Summary</b>
+        <ul>{summary.map((s, i) => <li key={i}>{s}</li>)}</ul>
+      </div>
 
-        <label>View mode</label>
-        <select value={viewMode} onChange={e => setViewMode(e.target.value)}>{VIEW_MODES.map(l => <option key={l}>{l}</option>)}</select>
-
-        <div className="translationList">
-          {selectedThread?.messages.map((m, i) => <div key={i} className={`translationItem ${selectedMessageIndex === i ? 'active' : ''}`} onClick={() => setSelectedMessageIndex(i)}>
-            <div className="who">{m.from === 'them' ? 'Incoming' : 'Me'}</div>
-            {viewMode !== 'Translation Only' && <div className="originalText">{m.text}</div>}
-            {viewMode !== 'Original Only' && <div className="translatedText">{smartTranslate(m.text, targetLang)}</div>}
-          </div>)}
-        </div>
-
-        <div className="summaryBox">
-          <b>Conversation Summary</b>
-          <ul>{summary.map((s, i) => <li key={i}>{s}</li>)}</ul>
-        </div>
-
-        <h2>AI Reply Helper</h2>
+      <div className="sideBlock">
+        <b>Reply Helper</b>
         <div className="selectedBox">
-          <b>Selected message</b>
+          <small>Selected message</small>
           <p>{selectedMessage}</p>
           <p className="miniTrans">{smartTranslate(selectedMessage, targetLang)}</p>
         </div>
-
         <label>Reply tone</label>
         <select value={tone} onChange={e => setTone(e.target.value)}>{TONES.map(t => <option key={t}>{t}</option>)}</select>
         <button className="primary" onClick={suggest}><Wand2 size={18}/> Suggest replies</button>
-
         <div className="suggestions">
           {suggestions.map((s, i) => <button key={i} className={selectedReply === s ? 'suggestion active' : 'suggestion'} onClick={() => setSelectedReply(s)}>{s}</button>)}
         </div>
         <textarea value={selectedReply} onChange={e => setSelectedReply(e.target.value)} placeholder="Selected reply appears here"></textarea>
         <div className="row">
-          <button onClick={copyReply}><Copy size={18}/> Copy reply</button>
-          <a className="send" href={`https://www.messenger.com/`} target="_blank" rel="noreferrer"><Send size={18}/> Open Messenger</a>
+          <button onClick={copyReply}><Copy size={18}/> Copy</button>
+          <a className="send" href="https://www.messenger.com/" target="_blank" rel="noreferrer"><Send size={18}/> Messenger</a>
+        </div>
+      </div>
+
+      <div className="sideBlock">
+        <h3><Upload size={17}/> Paste / Import Chat</h3>
+        <textarea value={manualText} onChange={e => setManualText(e.target.value)} placeholder="Paste messages line by line..."></textarea>
+        <button onClick={addManualThread}><RefreshCw size={18}/> Add as thread</button>
+      </div>
+    </aside>
+
+    <main className="main">
+      <section className="panel mirrorPanel">
+        <header><h2>Original Language</h2><span>{selectedThread?.name}</span></header>
+        <div className="mirrorList">
+          {selectedThread?.messages.map((m, i) => <button key={i} onClick={() => setSelectedMessageIndex(i)} className={`mirrorRow ${m.from} ${selectedMessageIndex === i ? 'selected' : ''}`}>
+            <span className="sender">{m.from === 'them' ? 'Them' : 'Me'}</span>
+            <span className="sentence">{m.text}</span>
+          </button>)}
         </div>
       </section>
 
-      <section className="panel importPanel">
-        <h2><Upload size={20}/> Paste / Import Chat</h2>
-        <p>Paste Facebook messages line by line. The app will create a local thread for translation and reply suggestions.</p>
-        <textarea value={manualText} onChange={e => setManualText(e.target.value)} placeholder="Paste messages here..."></textarea>
-        <button onClick={addManualThread}><RefreshCw size={18}/> Add as thread</button>
+      <section className="panel mirrorPanel">
+        <header><h2>Translation</h2><span>{targetLang}</span></header>
+        <div className="mirrorList">
+          {selectedThread?.messages.map((m, i) => <button key={i} onClick={() => setSelectedMessageIndex(i)} className={`mirrorRow ${m.from} ${selectedMessageIndex === i ? 'selected' : ''}`}>
+            <span className="sender">{m.from === 'them' ? 'Them' : 'Me'}</span>
+            <span className="sentence">{smartTranslate(m.text, targetLang)}</span>
+          </button>)}
+        </div>
       </section>
     </main>
   </div>
