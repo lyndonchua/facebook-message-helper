@@ -1,1 +1,0 @@
-{"manifest_version":3,"name":"Facebook Message Helper Capture","version":"0.1.0","description":"Capture visible Facebook/Messenger text for translation and reply suggestions.","permissions":["activeTab","scripting"],"host_permissions":["https://www.facebook.com/*","https://www.messenger.com/*"],"action":{"default_popup":"popup.html"}}
