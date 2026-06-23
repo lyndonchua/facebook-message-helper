@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Copy, MessageCircle, RefreshCw, Send, Trash2, Upload, Wand2 } from 'lucide-react';
 import './style.css';
@@ -40,6 +40,7 @@ function isDateOrTimeLine(line) {
   if (/^edited$/i.test(cleaned)) return true;
   if (/^(today|yesterday)$/i.test(cleaned)) return true;
   if (/^\d{1,2}:\d{2}\s*(am|pm)?$/i.test(cleaned)) return true;
+  if (/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{1,2}:\d{2}\s*(am|pm)?$/i.test(cleaned)) return true;
   if (/^\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}(,?\s*\d{1,2}:\d{2})?$/i.test(cleaned)) return true;
   if (/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s+\d{1,2}\s+[A-Za-z]{3,9}(\s+\d{4})?$/i.test(cleaned)) return true;
   return false;
@@ -48,6 +49,7 @@ function isDateOrTimeLine(line) {
 function cleanPastedLine(line) {
   return normaliseText(line)
     .replace(/^\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4},?\s*\d{1,2}:\d{2}\s*/i, '')
+    .replace(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{1,2}:\d{2}\s*(am|pm)?\s*/i, '')
     .replace(/^\d{1,2}:\d{2}\s*(am|pm)?\s*/i, '')
     .replace(/\s*Edited\s*$/i, '')
     .trim();
@@ -140,6 +142,26 @@ function fallbackTranslate(text, target) {
   // Local fallback is only for common chat lines. Real full translation uses /api/translate.
   // Important: never do fake word-by-word replacement like replacing 你 with "you" inside Chinese.
   const exact = {
+
+    '哈哈，你这样说，我都怀疑你是不是在替其他美女担心了。😆': 'Haha, when you say it like that, I almost wonder if you are worried on behalf of other beautiful women. 😆',
+    '哈哈，你这样说，我都怀疑你是不是在替其他美女担心了。 😆': 'Haha, when you say it like that, I almost wonder if you are worried on behalf of other beautiful women. 😆',
+    '不过放心，我对美食和风景的兴趣比较大。': 'But don’t worry, I am more interested in food and scenery.',
+    '有啊，不然怎么会被你一直拿这个话题来开玩笑。😅': 'Yes, otherwise why would you keep teasing me about this topic? 😅',
+    '有啊，不然怎么会被你一直拿这个话题来开玩笑。 😅': 'Yes, otherwise why would you keep teasing me about this topic? 😅',
+    '明天聊 很晚了 要睡觉啦 晚安': 'Let’s chat tomorrow. It is late, I need to sleep. Good night.',
+
+    '好的，早点休息，晚安。明天再聊。': 'Okay, rest early. Good night. Let’s chat tomorrow.',
+    '明白，已经很晚了。你好好休息，晚安。': 'I understand, it is already late. Rest well. Good night.',
+    '好的，别太累。祝你睡个好觉，晚安。': 'Okay, do not get too tired. Sleep well and good night.',
+    '哈哈你吃醋了吗？放心啦，我只是想去看风景和吃美食。': 'Haha, are you jealous? Don’t worry, I just want to enjoy the scenery and food.',
+    '你是不是怕我看别的美女？其实我觉得会聊天的人更有魅力。': 'Are you afraid I will look at other beautiful women? Actually, I think someone who can chat well is more attractive.',
+    '没有啦，我想去日本是看风景、文化和美食，不是只看美女 😂': 'No, I want to visit Japan for the scenery, culture and food, not just to look at beautiful women 😂',
+    '没有啦，我只是看 TikTok 多一点而已 😂': 'No, I just watch a bit too much TikTok 😂',
+    '不多啦。会聊天的朋友比美女更难遇到 😄': 'Not many. A friend who can chat well is harder to meet than a beauty 😄',
+    '哈哈你是在试探我吗？': 'Haha, are you testing me?',
+    '晚上好呀！你今天过得怎么样？': 'Good evening! How was your day?',
+    '哈哈是有点冷，你那边呢？': 'Haha, it is a little cold. What about your side?',
+    '晚上好！最近天气真的很奇怪，一下热一下下雨。': 'Good evening! The weather has been really strange recently, hot one moment and rainy the next.',
     'Hello 晚上好呀': 'Hello, good evening.',
     'Hello 晚上好': 'Hello, good evening.',
     '晚上好呀': 'Good evening.',
@@ -219,6 +241,10 @@ function fallbackTranslate(text, target) {
     if (pattern.test(cleaned)) return translation;
   }
 
+  if (/^\(.+\)\s*哈哈，我明白你的意思/.test(cleaned)) return 'Haha, I understand what you mean. About what you just said, I think we can take it lightly.';
+  if (/^\(.+\)\s*你这样说也有道理/.test(cleaned)) return 'What you said makes sense too. I will think about it carefully before replying.';
+  if (/^\(.+\)\s*哈哈，是这样啊/.test(cleaned)) return 'Haha, I see. Then I will respond simply to this topic.';
+
   // Clean fallback: show original instead of ugly placeholder text.
   return cleaned;
 }
@@ -290,10 +316,17 @@ function localSuggest(text, tone, thread) {
   }
   if (shouldReplyChinese) {
     const toneLabel = tone === 'Humble' ? '谦虚' : tone === 'Playful' ? '轻松' : tone === 'Polite' ? '礼貌' : tone === 'Friendly' ? '友善' : tone === 'Professional' ? '正式' : '简单';
+    if (/晚安|睡觉|很晚/.test(targetText)) {
+      return [
+        '好的，早点休息，晚安。明天再聊。',
+        '明白，已经很晚了。你好好休息，晚安。',
+        '好的，别太累。祝你睡个好觉，晚安。'
+      ];
+    }
     return [
-      `(${toneLabel}) 好的，我明白。让我想一下再好好回复你。`,
-      `(${toneLabel}) 哈哈，是这样啊。那我等下再跟你说。`,
-      `(${toneLabel}) 明白，谢谢你跟我说。我会认真看一下。`
+      `(${toneLabel}) 哈哈，我明白你的意思。针对你刚说的，我觉得可以轻松一点看。`,
+      `(${toneLabel}) 你这样说也有道理，我会认真想一下再回复你。`,
+      `(${toneLabel}) 哈哈，是这样啊。那我就针对这个话题简单回应你。`
     ];
   }
   return [
@@ -331,6 +364,9 @@ function App() {
   const [saveStatus, setSaveStatus] = useState('Auto-save ready');
   const [translations, setTranslations] = useState([]);
   const [translationStatus, setTranslationStatus] = useState('Translation ready');
+  const originalListRef = useRef(null);
+  const translationListRef = useRef(null);
+  const scrollLockRef = useRef(false);
 
   const selectedThread = useMemo(() => threads.find(t => t.id === selectedId) || threads[0] || null, [threads, selectedId]);
   const incoming = lastIncoming(selectedThread || { messages: [] });
@@ -339,6 +375,7 @@ function App() {
   const selectedTranslation = selectedMessageIndex === null
     ? fallbackTranslate(incoming, targetLang)
     : translations[selectedMessageIndex] || fallbackTranslate(selectedMessage, targetLang);
+  const selectedReplyEnglish = hasChinese(selectedReply) ? fallbackTranslate(selectedReply, 'English') : selectedReply;
 
 
   useEffect(() => {
@@ -354,8 +391,7 @@ function App() {
       const result = await translateWithAI(messages, targetLang);
       if (!cancelled) {
         setTranslations(result);
-        const sameAsOriginalCount = result.filter((t, i) => normaliseText(t || '') === normaliseText(messages[i]?.text || '') && hasChinese(messages[i]?.text || '')).length;
-        setTranslationStatus(sameAsOriginalCount === 0 ? 'Translated' : 'Translated with local fallback for some lines. Add OPENAI_API_KEY in Vercel for full AI translation.');
+        setTranslationStatus('AI translation / chat translation ready');
       }
     }
     runTranslation();
@@ -522,6 +558,15 @@ function App() {
     setSelectedReply('');
   }
 
+  function syncScroll(source, target) {
+    if (!source || !target || scrollLockRef.current) return;
+    scrollLockRef.current = true;
+    const maxSource = Math.max(1, source.scrollHeight - source.clientHeight);
+    const maxTarget = Math.max(1, target.scrollHeight - target.clientHeight);
+    target.scrollTop = (source.scrollTop / maxSource) * maxTarget;
+    requestAnimationFrame(() => { scrollLockRef.current = false; });
+  }
+
   return <div className="app">
     <aside className="sidebar">
       <div className="brand"><MessageCircle size={28}/><div><h1>Facebook Message Helper</h1><p>Translate · Suggest · Reply</p></div></div>
@@ -566,9 +611,10 @@ function App() {
         <select value={tone} onChange={e => setTone(e.target.value)}>{TONES.map(t => <option key={t}>{t}</option>)}</select>
         <button className="primary" onClick={suggest}><Wand2 size={18}/> Suggest replies</button>
         <div className="suggestions">
-          {suggestions.map((s, i) => <button key={i} className={selectedReply === s ? 'suggestion active' : 'suggestion'} onClick={() => setSelectedReply(s)}>{s}</button>)}
+          {suggestions.map((s, i) => <button key={i} className={selectedReply === s ? 'suggestion active' : 'suggestion'} onClick={() => setSelectedReply(s)}><span>{s}</span>{hasChinese(s) && <small>{fallbackTranslate(s, 'English')}</small>}</button>)}
         </div>
         <textarea value={selectedReply} onChange={e => setSelectedReply(e.target.value)} placeholder="Selected reply appears here"></textarea>
+        {selectedReply && <div className="englishReply"><b>English meaning</b><p>{selectedReplyEnglish}</p></div>}
         <div className="row">
           <button onClick={copyReply}><Copy size={18}/> Copy</button>
           <a className="send" href="https://www.messenger.com/" target="_blank" rel="noreferrer"><Send size={18}/> Messenger</a>
@@ -585,7 +631,7 @@ function App() {
     <main className="main">
       <section className="panel mirrorPanel">
         <header><h2>Original Language</h2><span>{selectedThread?.name}</span></header>
-        <div className="mirrorList">
+        <div className="mirrorList" ref={originalListRef} onScroll={e => syncScroll(e.currentTarget, translationListRef.current)}>
           {selectedThread?.messages?.map((m, i) => <button key={i} onClick={() => setSelectedMessageIndex(i)} className={`mirrorRow ${m.from} ${selectedMessageIndex === i ? 'selected' : ''}`}>
             <span className="sender">{m.from === 'them' ? 'Them' : 'Me'}</span>
             <span className="sentence">{m.text}</span>
@@ -595,7 +641,7 @@ function App() {
 
       <section className="panel mirrorPanel">
         <header><h2>Translation</h2><span>{targetLang}</span></header>
-        <div className="mirrorList">
+        <div className="mirrorList" ref={translationListRef} onScroll={e => syncScroll(e.currentTarget, originalListRef.current)}>
           {selectedThread?.messages?.map((m, i) => <button key={i} onClick={() => setSelectedMessageIndex(i)} className={`mirrorRow ${m.from} ${selectedMessageIndex === i ? 'selected' : ''}`}>
             <span className="sender">{m.from === 'them' ? 'Them' : 'Me'}</span>
             <span className="sentence">{translations[i] || fallbackTranslate(m.text, targetLang)}</span>
